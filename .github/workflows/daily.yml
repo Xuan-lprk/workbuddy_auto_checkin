@@ -1,103 +1,103 @@
-name: Buddy 加油站每日自动化
+# name: Buddy 加油站每日自动化
 
-on:
-  schedule:
-    # UTC 00:10 = 北京时间 08:10
-    - cron: "10 0 * * *"
-  workflow_dispatch:
+# on:
+#   schedule:
+#     # UTC 00:10 = 北京时间 08:10
+#     - cron: "10 0 * * *"
+#   workflow_dispatch:
 
-permissions:
-  contents: read
+# permissions:
+#   contents: read
 
-concurrency:
-  group: wb-daily
-  cancel-in-progress: false
+# concurrency:
+#   group: wb-daily
+#   cancel-in-progress: false
 
-jobs:
-  account:
-    name: 账号槽位 ${{ matrix.slot }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        slot: ${{ fromJSON(vars.WB_ACCOUNT_SLOTS || '[1]') }}
-    steps:
-      - name: 检出仓库
-        uses: actions/checkout@v7
+# jobs:
+#   account:
+#     name: 账号槽位 ${{ matrix.slot }}
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 10
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         slot: ${{ fromJSON(vars.WB_ACCOUNT_SLOTS || '[1]') }}
+#     steps:
+#       - name: 检出仓库
+#         uses: actions/checkout@v7
 
-      - name: 执行当前账号
-        id: run
-        env:
-          WB_ACCESS_TOKEN: ${{ secrets[format('WB_ACCESS_TOKEN_{0}', matrix.slot)] }}
-          WB_ACCOUNT_NAME: ${{ vars[format('WB_ACCOUNT_NAME_{0}', matrix.slot)] }}
-          WB_ACCOUNT_SLOT: ${{ matrix.slot }}
-          WB_ENDPOINT: https://copilot.tencent.com
-          WB_RESULT_FILE: ${{ runner.temp }}/summary.md
-          WB_RESULT_JSON_FILE: ${{ runner.temp }}/result.json
-        run: |
-          set -uo pipefail
-          set +e
-          python3 wb_auto.py
-          code=$?
-          set -e
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          if [ "$code" -ne 0 ]; then
-            echo "::warning::账号槽位 ${{ matrix.slot }} 存在未完成项"
-          fi
-          exit 0
+#       - name: 执行当前账号
+#         id: run
+#         env:
+#           WB_ACCESS_TOKEN: ${{ secrets[format('WB_ACCESS_TOKEN_{0}', matrix.slot)] }}
+#           WB_ACCOUNT_NAME: ${{ vars[format('WB_ACCOUNT_NAME_{0}', matrix.slot)] }}
+#           WB_ACCOUNT_SLOT: ${{ matrix.slot }}
+#           WB_ENDPOINT: https://copilot.tencent.com
+#           WB_RESULT_FILE: ${{ runner.temp }}/summary.md
+#           WB_RESULT_JSON_FILE: ${{ runner.temp }}/result.json
+#         run: |
+#           set -uo pipefail
+#           set +e
+#           python3 wb_auto.py
+#           code=$?
+#           set -e
+#           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+#           if [ "$code" -ne 0 ]; then
+#             echo "::warning::账号槽位 ${{ matrix.slot }} 存在未完成项"
+#           fi
+#           exit 0
 
-      - name: 上传账号结果
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: wb-result-${{ matrix.slot }}
-          path: |
-            ${{ runner.temp }}/result.json
-            ${{ runner.temp }}/summary.md
-          if-no-files-found: error
-          retention-days: 1
+#       - name: 上传账号结果
+#         if: always()
+#         uses: actions/upload-artifact@v7
+#         with:
+#           name: wb-result-${{ matrix.slot }}
+#           path: |
+#             ${{ runner.temp }}/result.json
+#             ${{ runner.temp }}/summary.md
+#           if-no-files-found: error
+#           retention-days: 1
 
-  aggregate:
-    name: 汇总所有账号
-    if: always()
-    needs: account
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: 检出仓库
-        uses: actions/checkout@v7
+#   aggregate:
+#     name: 汇总所有账号
+#     if: always()
+#     needs: account
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 10
+#     steps:
+#       - name: 检出仓库
+#         uses: actions/checkout@v7
 
-      - name: 下载账号结果
-        uses: actions/download-artifact@v8
-        with:
-          pattern: wb-result-*
-          path: ${{ runner.temp }}/results
+#       - name: 下载账号结果
+#         uses: actions/download-artifact@v8
+#         with:
+#           pattern: wb-result-*
+#           path: ${{ runner.temp }}/results
 
-      - name: 生成汇总与统一推送
-        env:
-          WB_RESULTS_DIR: ${{ runner.temp }}/results
-          WB_SUMMARY_FILE: ${{ runner.temp }}/aggregate.md
-          WB_EXPECTED_SLOTS: ${{ vars.WB_ACCOUNT_SLOTS || '[1]' }}
-          WB_ACCOUNT_NAME_1: ${{ vars.WB_ACCOUNT_NAME_1 }}
-          WB_ACCOUNT_NAME_2: ${{ vars.WB_ACCOUNT_NAME_2 }}
-          WB_ACCOUNT_NAME_3: ${{ vars.WB_ACCOUNT_NAME_3 }}
-          WB_ACCOUNT_NAME_4: ${{ vars.WB_ACCOUNT_NAME_4 }}
-          WB_ACCOUNT_NAME_5: ${{ vars.WB_ACCOUNT_NAME_5 }}
-          WB_ACCOUNT_NAME_6: ${{ vars.WB_ACCOUNT_NAME_6 }}
-          WB_ACCOUNT_NAME_7: ${{ vars.WB_ACCOUNT_NAME_7 }}
-          WB_ACCOUNT_NAME_8: ${{ vars.WB_ACCOUNT_NAME_8 }}
-          WB_ACCOUNT_NAME_9: ${{ vars.WB_ACCOUNT_NAME_9 }}
-          WB_ACCOUNT_NAME_10: ${{ vars.WB_ACCOUNT_NAME_10 }}
-          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
-        run: |
-          set -uo pipefail
-          set +e
-          python3 aggregate_results.py
-          code=$?
-          set -e
-          cat "$WB_SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$code" -ne 0 ]; then
-            echo "::warning::部分账号签到未达成，详见汇总"
-          fi
-          exit 0
+#       - name: 生成汇总与统一推送
+#         env:
+#           WB_RESULTS_DIR: ${{ runner.temp }}/results
+#           WB_SUMMARY_FILE: ${{ runner.temp }}/aggregate.md
+#           WB_EXPECTED_SLOTS: ${{ vars.WB_ACCOUNT_SLOTS || '[1]' }}
+#           WB_ACCOUNT_NAME_1: ${{ vars.WB_ACCOUNT_NAME_1 }}
+#           WB_ACCOUNT_NAME_2: ${{ vars.WB_ACCOUNT_NAME_2 }}
+#           WB_ACCOUNT_NAME_3: ${{ vars.WB_ACCOUNT_NAME_3 }}
+#           WB_ACCOUNT_NAME_4: ${{ vars.WB_ACCOUNT_NAME_4 }}
+#           WB_ACCOUNT_NAME_5: ${{ vars.WB_ACCOUNT_NAME_5 }}
+#           WB_ACCOUNT_NAME_6: ${{ vars.WB_ACCOUNT_NAME_6 }}
+#           WB_ACCOUNT_NAME_7: ${{ vars.WB_ACCOUNT_NAME_7 }}
+#           WB_ACCOUNT_NAME_8: ${{ vars.WB_ACCOUNT_NAME_8 }}
+#           WB_ACCOUNT_NAME_9: ${{ vars.WB_ACCOUNT_NAME_9 }}
+#           WB_ACCOUNT_NAME_10: ${{ vars.WB_ACCOUNT_NAME_10 }}
+#           FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+#         run: |
+#           set -uo pipefail
+#           set +e
+#           python3 aggregate_results.py
+#           code=$?
+#           set -e
+#           cat "$WB_SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
+#           if [ "$code" -ne 0 ]; then
+#             echo "::warning::部分账号签到未达成，详见汇总"
+#           fi
+#           exit 0
